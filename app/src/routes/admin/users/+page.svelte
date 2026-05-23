@@ -1,71 +1,137 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
-  import Button from '$lib/components/ui/button/button.svelte';
+  import { enhance } from "$app/forms";
+  import Button from "$lib/components/ui/button/button.svelte";
 
-  let {data} = $props()
-  let users = $derived(data.users)
-  let updatingId = $state<null | string>(null) 
+  let { data } = $props();
+
+  let users = $state<typeof data.users>([]);
+  let pendingId = $state<string | null>(null);
+
+  $effect(() => {
+    users = data.users;
+  });
 </script>
 
-<div class="overflow-x-auto p-4">
-  <div class="flex flex-row justify-between py-4">
-    <h1 class="text-xl ">Users</h1>
-    <Button href="users/create">Create User</Button>
+<div class="mx-auto max-w-6xl p-6">
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold">Users</h1>
+      <p class="text-sm text-muted-foreground">{users.length} users loaded</p>
+    </div>
+
+    <Button href="/admin/users/create">Create User</Button>
   </div>
-  <table class="min-w-full divide-y divide-gray-200 border rounded-lg shadow-sm">
-    <thead class="bg-gray-50">
-      <tr>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase text-right">Actions</th>
-      </tr>
-    </thead>
-    <tbody class="bg-white divide-y divide-gray-200">
-      {#each users as user}
-        <tr class="hover:bg-gray-50 transition-colors">
-          <td class="px-6 py-4">
-            <div class="font-medium text-gray-900">{user.displayName}</div>
-            <div class="text-sm text-gray-500">{user.userPrincipalName}</div>
-          </td>
-          <td class="px-6 py-4">
-            {#if user.accountEnabled}
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>
-            {:else}
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Disabled</span>
-            {/if}
-          </td>
-<td class="px-6 py-4 text-right">
-  <form 
-  method="POST" 
-  action="?/toggleStatus" 
-  use:enhance={() => {
-    return async ({ result, update, formData }) => {
-      updatingId = formData.get('userId')?.toString() ?? null;
-      await update();
-      updatingId = null;
-    };
-  }}
->
-  <input type="hidden" name="userId" value={user.id} />
-  <input type="hidden" name="currentStatus" value={user.accountEnabled} />
-  
-  <button 
-    disabled={updatingId === user.id}
-    class="inline-flex items-center gap-2 text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded disabled:opacity-50"
-  >
-    {#if updatingId === user.id}
-      <svg class="animate-spin h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-      Processing...
-    {:else}
-      {user.accountEnabled ? 'Disable' : 'Enable'}
+
+  <div class="overflow-hidden rounded-lg border">
+    <table class="w-full">
+      <thead class="bg-muted/50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs uppercase text-muted-foreground">User</th>
+          <th class="px-6 py-3 text-left text-xs uppercase text-muted-foreground">Status</th>
+          <th class="px-6 py-3 text-right text-xs uppercase text-muted-foreground">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody class="divide-y">
+        {#each users as user (user.id)}
+          <tr>
+            <td class="px-6 py-4">
+              <a class="font-medium" href={`/admin/users/${user.id}`}>
+                {user.displayName || "Unnamed user"}
+              </a>
+              <div class="text-sm text-muted-foreground">
+                {user.userPrincipalName}
+              </div>
+            </td>
+
+            <td class="px-6 py-4">
+              <span
+                class={`rounded-full px-2 py-1 text-xs ${
+                  user.accountEnabled
+                    ? "bg-green-100 text-green-800"
+                    : "bg-red-100 text-red-800"
+                }`}
+              >
+                {user.accountEnabled ? "Active" : "Disabled"}
+              </span>
+            </td>
+
+            <td class="px-6 py-4">
+              <div class="flex justify-end gap-2">
+                <form
+                  method="POST"
+                  action="?/toggleStatus"
+                  use:enhance={({ formData }) => {
+                    const userId = formData.get("userId")?.toString();
+                    pendingId = userId ?? null;
+
+                    return async ({ result }) => {
+                      if (result.type === "success" && result.data?.success && userId) {
+                        const user = users.find((u) => u.id === userId);
+
+                        if (user) {
+                          user.accountEnabled = result.data.accountEnabled;
+                        }
+                      }
+
+                      pendingId = null;
+                    };
+                  }}
+                >
+                  <input type="hidden" name="userId" value={user.id} />
+
+                  <Button type="submit" variant="outline" disabled={pendingId === user.id}>
+                    {pendingId === user.id
+                      ? "Saving..."
+                      : user.accountEnabled
+                        ? "Disable"
+                        : "Enable"}
+                  </Button>
+                </form>
+
+                <form
+                  method="POST"
+                  action="?/deleteUser"
+                  use:enhance={({ formData, cancel }) => {
+                    const userId = formData.get("userId")?.toString();
+
+                    if (!confirm(`Delete ${user.displayName || user.userPrincipalName}?`)) {
+                      cancel();
+                      return;
+                    }
+
+                    pendingId = userId ?? null;
+
+                    return async ({ result }) => {
+                      if (result.type === "success" && result.data?.success && userId) {
+                        users = users.filter((u) => u.id !== userId);
+                      }
+
+                      pendingId = null;
+                    };
+                  }}
+                >
+                  <input type="hidden" name="userId" value={user.id} />
+
+                  <Button
+                    type="submit"
+                    disabled={pendingId === user.id}
+                    class="bg-red-500 text-white hover:bg-red-600"
+                  >
+                    Delete
+                  </Button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    {#if users.length === 0}
+      <div class="p-8 text-center text-sm text-muted-foreground">
+        No users found.
+      </div>
     {/if}
-  </button>
-</form>
-</td>        </tr>
-      {/each}
-    </tbody>
-  </table>
+  </div>
 </div>
